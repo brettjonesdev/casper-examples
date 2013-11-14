@@ -31,6 +31,8 @@ In web applications, you can't automatically test your front-end without using s
 ### Casper API
 Casper, like Phantom, runs JavaScript code.  It can be used for web scraping in addition to testing, but we will focus on testing for now.  Casper runs your code from local JS files, but in your code you can also tell Casper to execute JavaScript in the context of the WebKit browser, using the `evaluate` method (more on this later).  To use Casper, you simply write some JS code, save it to a file, then run it from the command line like so: `casperjs my-source.js`.  If you will be running unit tests, you must include the `test` command, like so: `casperjs test my-test.js`.
 
+*The examples that follow can be downloaded from my* [GitHub Repo](https://github.com/brettjonesdev/casper-examples).
+
 Casper has a fantastic API full of convenience methods to help you interact with your headless browser.  There are 2 main modules that you can use, the [casper module](http://docs.casperjs.org/en/latest/modules/casper.html) and the [tester module](http://docs.casperjs.org/en/latest/modules/tester.html).  Methods in the tester module are only available when you run Casper with `casperjs test my-test.js`.  Let's first look at what the main `casper` module can do, then we'll look at tests in particular.   To get started, let's open [http://www.reddit.com/](http://www.reddit.com/), print the page's title, and take a screenshot.
 
 ##### reddit-home.js
