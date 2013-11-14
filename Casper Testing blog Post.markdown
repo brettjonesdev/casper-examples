@@ -31,50 +31,141 @@ In web applications, you can't automatically test your front-end without using s
 ### Casper API
 Casper, like Phantom, runs JavaScript code.  It can be used for web scraping in addition to testing, but we will focus on testing for now.  Casper runs your code from local JS files, but in your code you can also tell Casper to execute JavaScript in the context of the WebKit browser, using the `evaluate` method (more on this later).  To use Casper, you simply write some JS code, save it to a file, then run it from the command line like so: `casperjs my-source.js`.  If you will be running unit tests, you must include the `test` command, like so: `casperjs test my-test.js`.
 
-Casper has a fantastic API full of convenience methods to help you interact with your headless browser.  There are 2 main modules that you can use, the [casper module](http://docs.casperjs.org/en/latest/modules/casper.html) and the [tester module](http://docs.casperjs.org/en/latest/modules/tester.html).  Methods in the tester module are only available when you run Casper with `casperjs test my-test.js`.  Let's first look at what the main `casper` module can do, then we'll look at tests in particular.   To get started, here's how you'd open [http://google.com](http://google.com) and print the page's title:
+Casper has a fantastic API full of convenience methods to help you interact with your headless browser.  There are 2 main modules that you can use, the [casper module](http://docs.casperjs.org/en/latest/modules/casper.html) and the [tester module](http://docs.casperjs.org/en/latest/modules/tester.html).  Methods in the tester module are only available when you run Casper with `casperjs test my-test.js`.  Let's first look at what the main `casper` module can do, then we'll look at tests in particular.   To get started, let's open [http://www.reddit.com/](http://www.reddit.com/), print the page's title, and take a screenshot.
 
-##### casper-example1.js
+##### reddit-home.js
 ```javascript
-var casper = require("casper").create();
-
-casper.start("http://google.com", function() {
-	this.echo(casper.getTitle());
-});
-
-casper.run();
+casper.options.viewportSize = {width: 1024, height: 768};
+casper.start("http://www.reddit.com/", function() {
+	console.log('Opened page with title \"' + this.getTitle() + '"');
+    casper.capture("../images/reddit-home.png");
+}).run();
 ```
 
-Simple enough.  Now let's do a google search and take a snapshot of the results:
+Simple enough. the `start()` call opens the page and executes the callback when it's loaded.  We then take a screenshot and save it to a PNG called reddit-home.png.  Here's what it looks like:
 
-##### casper-google-search.js
-```javascript
-var casper = require("casper").create();
+![Reddit Screenshot](/images/reddit-home.png)
 
-casper.start("http://google.com", function() {
-	var submitForm = true;
-	casper.fill("form", {
-	   q: "CasperJS" //enter "CasperJS in form input[name=q]
-	}, submitForm);
+Saving screenshots in this manner can be a great part of your functional tests, and can be hugely helpful when writing your tests, helping you "see" what's going on in the invisible browser. 
 
-	casper.then(function() {
-		this.capture("./casper-google-search.png");
-	});
-});
-
-casper.run();
-```
-
-This fills out the form, entering "CasperJS" in the `<input>` with a name of "q" and then submitting the form.  `casper.then(callback)` executes the callback function once the page has completed the action from the last step.  A lot of Casper's functionality is asynchronous in nature, so you'll end up wrapping lots of your code in `.then()` calls.  In our callback, which is fired once the new page has loaded, we capture the screen and save it to `casper-google-search.png`:
-
-![Google Search Screenshot](/images/casper-google-search.png)
-
-Saving screenshots in this manner can be a great part of your functional tests, and can be hugely helpful when writing your tests.  
 
 ### Casper Test API
 
-Now let's look at running a few basic tests.  Let's go to google.com, click "I'm feeling lucky" and then make sure that we have results.  
+Now let's take a look at Casper's test API.  Let's open up the /r/programming subreddit, click the "New" link and confirm that we're on the right page and have the correct content. 
 
+##### reddit-new.js
 ```javascript
-var x;
+casper.options.viewportSize = {width: 1024, height: 768};
+var testCount = 2;
+casper.test.begin("Testing Reddit", testCount, function redditTest(test) {
+    casper.start("http://www.reddit.com/r/programming", function() {
+    	test.assertTitleMatch(/programming/, "Title is what we'd expect");
+    	
+    	//Click "new link"
+    	casper.click("a[href*='/programming/new/']");
+    	casper.waitForUrl(/\/programming\/new\/$/, function() {
+    		test.assertElementCount("p.title", 25, "25 links on first page");
+    		casper.capture("../images/reddit-programming-new.png");
+    	});
+
+    }).run(function() {
+        test.done();
+    });
+});
 ```
+
+Here, after we click the "New" link, we wait for the url to change and a new page to load.  Then we confirm that there are 25 links on the page, the Reddit default.  
+
+One of Casper's strengths is its extensive and powerful API, chock full of useful helper methods like `click()` and `assertElementCount()`.  Let's look at a more complicated utility method, `fill()`.  `fill()` is a convenient way to fill out and (optionally) submit forms on the page.  In this example, let's fill out the search box form and search for "javascript" within the /r/programming subreddit.
+
+#### reddit-search.js
+```javascript
+casper.options.viewportSize = {width: 1024, height: 768};
+var testCount = 1;
+casper.test.begin("Searching Reddit", testCount, function redditSearch(test) {
+    casper.start("http://www.reddit.com/r/programming", function() {
+    	//Search for "javascript"
+
+        casper.fill("form#search", {
+            "q": "javascript",
+           "restrict_sr": true 
+        }, true);
+
+        casper.then(function(){
+            test.assertElementCount("p.title", 25, "Found 25 or more results");
+            this.capture("../images/Reddit search.png");
+        });
+        
+    }).run(function() {
+        test.done();
+    });
+});
+```
+
+#### Invading the DOM - `casper.evaluate()`
+Sometimes, to really test something complicated, you need to somehow jump into the DOM of the browser itself.  One of Casper's greatest strengths is its ability to do just that with the `(evaluate())[http://docs.casperjs.org/en/latest/modules/casper.html#evaluate]` method.  If you find this a bit confusing, they have a nice (diagram)[http://docs.casperjs.org/en/latest/_images/evaluate-diagram.png] to help you picture this.  Here's an example where we will jump into the context of the r/programming page, click on upvote, confirm that the login modal appears, then click on the `.close` backdrop and confirm that the modal disappears.  The results are then returned to the casper environment.  
+
+#### reddit-modal.js
+```javascript
+casper.options.viewportSize = {width: 1024, height: 768};
+var testCount = 1;
+casper.test.begin("Testing upvote login", testCount, function upvoteLogin(test) {
+    casper.start("http://www.reddit.com/r/programming", function() {
+    	var modalOpensAndCloses = casper.evaluate(function(){
+            console.log("Now I'm in the DOM!");
+            $("div.thing:first .arrow.up").click()
+            var modalVisibleAfterClick = $(".popup").is(":visible");
+            $(".cover").click()
+            var modalClosedAfterClickOff = $(".popup").is(":visible");
+            return (modalVisibleAfterClick && !modalClosedAfterClickOff);
+        });
+        test.assert(modalOpensAndCloses, "Login Modal is displayed when clicking upvote before signing in");
+    }).run(function() {
+        test.done();
+    });
+});
+```
+
+An important thing to note when using `casper.evaluate()` is that unlike almost any other interaction that occurs with the browser (`click()`, `.fill()`, etc.), `evaluate` is **synchronous**.  Whereas after calling `.fill() or [.sendKeys()](http://docs.casperjs.org/en/latest/modules/casper.html#sendkeys) you will need to wrap your next interaction in a `casper.then()` callback, `evaluate` happens instantly.  This actually makes it easier to use than some of its asynchronous counterparts, but after a while you get used to asynchronous and have to remind yourself that evaluate is synchronous.  
+
+### Thoughts on using Casper
+
+Casper is probably not the best tool for someone who isn't familiar with JavaScript, and although it is concise and powerful, it has its pain points just like anything.  Here are a few pain points and ideas that you might consider to help you write a clean, concise and maintainable codebase.  
+#### Async and `.then()`
+
+Probably the most difficult part of using Casper is dealing with the asynchronous nature of pretty much everything.  It is important to understand that `then()` essentially adds navigation steps to a stack.  So if you call `click()`, you will need to wrap your follow-up code in a `then()` callback in order to see the changes from your click event.  I recommend reading helpful links like this (StackOverflow question)[http://stackoverflow.com/questions/11604611/what-does-then-really-mean-in-casperjs] to try to wrap your head around this concept.
+
+#### Code organization
+Something I have found helpful in writing medium to large test suites is to make certain to organize code into separate files with specific tests and purposes.  CasperJS runs in the PhantomJS execution environment and allows you to include/import other JS files with CommonJS syntax.  So if you have a utility file my-utils.js, you can import it and use it elsewhere.
+
+#### my-utils.js 
+```javascript
+exports.sayHello = function() {
+	console.log("Hello");
+}
+```
+
+#### elsewhere.js
+```javascript
+var myUtils = require("./my-utils");
+myUtils.sayHello();
+```
+
+This is incredibly helpful, and allows you to organize your app into smaller pieces like you would in a "real" application.  I have found it helpful to organize in these ways:
+
+* test.js - put your initial configuration here, and require() and run your tests here
+* my-utils.js - have a common utility class for common actions and helper methods
+* navigation.js - separate your navigation (go to this page) from your tests, and make navigation reusable across tests.  For instance, `require('./navigation').homePage();`
+* customer.js - test the "customer" section of your application.  Keep this separate from login test and all of the other sections of your application you will be besting.  
+
+Basically, when you are writing your test suites, don't be stupid and immediately disregard all of your hard-won knowledge about good software engineering best practices because your "just" writing tests.  [YAGNI](http://en.wikipedia.org/wiki/You_aren't_gonna_need_it).  [DRY](http://en.wikipedia.org/wiki/Don%27t_repeat_yourself).  You know the drill.  
+
+## Outro
+If you've never really written unit or functional tests before, I hope you'll bit the bullet, take an hour and give Casper a shot.  It has a great community, is actively maintained, and makes for a great, lighweight and code-centric solution to a difficult and important problem that gets addressed far too infrequently.  If you're disillusioned with Unit Tests and TDD, don't throw the Functional Testing baby out with the proverbial bathwater.  I think you'll find the ROI for Casper integration testing to be far higher than you ever expected.  
+
+If you'd like more information on Casper, check out these links:
+
+* [Introducing CasperJS](https://nicolas.perriault.net/code/2012/introducing-casperjs-toolkit-phantomjs/)
+* [Simpler UI Testing with CasperJS](http://blog.newrelic.com/2013/06/04/simpler-ui-testing-with-casperjs-2/)
+* [What Does 'Then' Reqlly Mean in CasperJS](http://stackoverflow.com/questions/11604611/what-does-then-really-mean-in-casperjs)
 
